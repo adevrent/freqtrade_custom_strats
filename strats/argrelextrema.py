@@ -135,23 +135,24 @@ class Argrelextrema(IStrategy):
 
         # Maxima / Minima Points of Close
         
-        dataframe["maxima"] = dataframe["close"].rolling(50).max().shift(2)
-        dataframe["minima"] = dataframe["close"].rolling(50).min().shift(2)
+        dataframe["maxima"] = dataframe["close"].rolling(20).max().shift(2)
+        dataframe["minima"] = dataframe["close"].rolling(20).min().shift(2)
+        dataframe["vol"] = (dataframe["close"].rolling(20).std() / dataframe["close"])
 
         # Momentum Indicators
         # ------------------------------------
 
         # RSI
-        dataframe['rsi'] = ta.RSI(dataframe)
+        #dataframe['rsi'] = ta.RSI(dataframe)
 
         # MACD
-        macd = ta.MACD(dataframe)
-        dataframe['macd'] = macd['macd']
-        dataframe['macdsignal'] = macd['macdsignal']
-        dataframe['macdhist'] = macd['macdhist']
+        #macd = ta.MACD(dataframe)
+        #dataframe['macd'] = macd['macd']
+        #dataframe['macdsignal'] = macd['macdsignal']
+        #dataframe['macdhist'] = macd['macdhist']
 
         # MFI
-        dataframe['mfi'] = ta.MFI(dataframe)
+        #dataframe['mfi'] = ta.MFI(dataframe)
 
         # Overlap Studies
         # ------------------------------------
