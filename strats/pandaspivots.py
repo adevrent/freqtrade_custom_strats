@@ -170,6 +170,12 @@ class PandasPivots(IStrategy):
         dataframe["check_maxima"][dataframe["check_maxima"] == False] = None
         dataframe["maxima"] = dataframe["close"].shift(periods = pivot_range)[check_maxima == True]
         
+        dataframe["maxima"][0] = dataframe["close"][0] * 10  # an arbitrarily large value assigned to first row (to make .fillna() function work.)
+        dataframe["minima"][0] = 0  # an arbitrarily small value assigned to first row (to make .fillna() function work.)
+
+        dataframe["maxima"] = dataframe["maxima"].fillna(method = "ffill")  # Fill NaN with last value.
+        dataframe["minima"] = dataframe["minima"].fillna(method = "ffill")  # Fill NaN with last value.
+        
         
 
 
