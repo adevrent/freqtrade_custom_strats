@@ -50,13 +50,13 @@ class PandasPivots(IStrategy):
 
     # Optimal stoploss designed for the strategy.
     # This attribute will be overridden if the config file contains "stoploss".
-    stoploss = -0.005
+    stoploss = -0.01
 
     # Trailing stoploss
     trailing_stop = True
     trailing_only_offset_is_reached = True
     trailing_stop_positive = 0.005
-    trailing_stop_positive_offset = 0.01  # Disabled / not configured
+    trailing_stop_positive_offset = 0.02  # Disabled / not configured
 
     # Optimal timeframe for the strategy.
     # timeframe = '5m'
@@ -133,14 +133,14 @@ class PandasPivots(IStrategy):
         :return: a Dataframe with all mandatory indicators for the strategies
         """
 
-        # Maxima / Minima Points of Close
+        # Maxima / Minima Points of High / Low
         
-        pivot_range = int(10)
+        pivot_range = int(20)
 
         # Minima code
         
-        conditions1_minima = np.array([(dataframe["close"].shift(periods = pivot_range) < dataframe["close"].shift(periods = pivot_range + lb)) for lb in range(1, pivot_range + 1)])
-        conditions2_minima = np.array([(dataframe["close"].shift(periods = pivot_range) < dataframe["close"].shift(periods = pivot_range - lb)) for lb in range(1, pivot_range + 1)])
+        conditions1_minima = np.array([(dataframe["low"].shift(periods = pivot_range) < dataframe["low"].shift(periods = pivot_range + lb)) for lb in range(1, pivot_range + 1)])
+        conditions2_minima = np.array([(dataframe["low"].shift(periods = pivot_range) < dataframe["low"].shift(periods = pivot_range - lb)) for lb in range(1, pivot_range + 1)])
         conditions_minima = conditions1_minima & conditions2_minima
         # 1st element is if condition is true compared to first candle before,
         # 2nd element is if condition is true compared to second candle before and so on ...
@@ -151,12 +151,12 @@ class PandasPivots(IStrategy):
         # Test whether all array elements along a given axis evaluate to True.
         dataframe["check_minima"] = check_minima
         dataframe["check_minima"][dataframe["check_minima"] == False] = None
-        dataframe["minima"] = dataframe["close"].shift(periods = pivot_range)[check_minima == True]
+        dataframe["minima"] = dataframe["low"].shift(periods = pivot_range)[check_minima == True]
         
         # Maxima code
         
-        conditions1_maxima = np.array([(dataframe["close"].shift(periods = pivot_range) > dataframe["close"].shift(periods = pivot_range + lb)) for lb in range(1, pivot_range + 1)])
-        conditions2_maxima = np.array([(dataframe["close"].shift(periods = pivot_range) > dataframe["close"].shift(periods = pivot_range - lb)) for lb in range(1, pivot_range + 1)])
+        conditions1_maxima = np.array([(dataframe["high"].shift(periods = pivot_range) > dataframe["high"].shift(periods = pivot_range + lb)) for lb in range(1, pivot_range + 1)])
+        conditions2_maxima = np.array([(dataframe["high"].shift(periods = pivot_range) > dataframe["high"].shift(periods = pivot_range - lb)) for lb in range(1, pivot_range + 1)])
         conditions_maxima = conditions1_maxima & conditions2_maxima
         # 1st element is if condition is true compared to first candle before,
         # 2nd element is if condition is true compared to second candle before and so on ...
@@ -170,10 +170,10 @@ class PandasPivots(IStrategy):
 
         dataframe["check_maxima"] = check_maxima
         dataframe["check_maxima"][dataframe["check_maxima"] == False] = None
-        dataframe["maxima"] = dataframe["close"].shift(periods = pivot_range)[check_maxima == True]
+        dataframe["maxima"] = dataframe["high"].shift(periods = pivot_range)[check_maxima == True]
         
-        dataframe["maxima"][0] = dataframe["close"][0] * 1.5  # an arbitrarily large value assigned to first row (to make .fillna() function work.)
-        dataframe["minima"][0] = dataframe["close"][0] * 0.5  # an arbitrarily small value assigned to first row (to make .fillna() function work.)
+        dataframe["maxima"][0] = dataframe["high"][0] * 1.5  # an arbitrarily large value assigned to first row (to make .fillna() function work.)
+        dataframe["minima"][0] = dataframe["low"][0] * 0.5  # an arbitrarily small value assigned to first row (to make .fillna() function work.)
 
         dataframe["maxima"] = dataframe["maxima"].fillna(method = "ffill")  # Fill NaN with last value.
         dataframe["minima"] = dataframe["minima"].fillna(method = "ffill")  # Fill NaN with last value.
@@ -207,7 +207,16 @@ class PandasPivots(IStrategy):
         #dataframe['macdhist'] = macd['macdhist']
 
         # MFI
-        #dataframe['mfi'] = ta.MFI(dataframe)
+        dataframe['mfi'] = ta.MFI(dataframe)
+        
+        dataframe["mfi_maxima"] = dataframe["mfi"].shift(periods = pivot_range)[check_maxima == True]  # MFI of last maxima point.
+        dataframe["mfi_minima"] = dataframe["mfi"].shift(periods = pivot_range)[check_minima == True]  # MFI of last minima point.
+        
+        dataframe["mfi_maxima"][0] = 70  # an arbitrarily large value assigned to first row (to make .fillna() function work.)
+        dataframe["mfi_minima"][0] = 30  # an arbitrarily small value assigned to first row (to make .fillna() function work.)
+        
+        dataframe["mfi_maxima"] = dataframe["mfi_maxima"].fillna(method = "ffill")  # Fill NaN with last value.
+        dataframe["mfi_minima"] = dataframe["mfi_minima"].fillna(method = "ffill")  # Fill NaN with last value.
 
         # Overlap Studies
         # ------------------------------------
@@ -273,7 +282,8 @@ class PandasPivots(IStrategy):
             (
                 # Signal:
                 (qtpylib.crossed_below(dataframe["low"], dataframe["minima"])) &  # Candle low swept minima.
-                (dataframe["rsi"] > (dataframe["rsi_minima"] + 5)) &  # RSI divergence
+                (dataframe["rsi"] > (dataframe["rsi_minima"])) &  # RSI divergence
+                (dataframe["rsi"] < 40) &  # RSI is oversold.
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
             'enter_long'] = 1
@@ -282,7 +292,8 @@ class PandasPivots(IStrategy):
             (
                 # Signal:
                 (qtpylib.crossed_above(dataframe["high"], dataframe["maxima"])) &  # Candle high swept maxima.
-                (dataframe["rsi"] < (dataframe["rsi_maxima"] - 5)) &  # RSI divergence
+                (dataframe["rsi"] < (dataframe["rsi_maxima"])) &  # RSI divergence
+                (dataframe["rsi"] > 60) &  # RSI is overbought.
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
             'enter_short'] = 1
@@ -298,8 +309,8 @@ class PandasPivots(IStrategy):
         """
         dataframe.loc[
             (
-                # Signal: Candle high crosses above maxima point.
-                (qtpylib.crossed_below(dataframe["rsi"], 70)) &
+                # Signal: RSI crosses above 50 OR RSI crosses below rsi of minima point (invalidation).
+                ((qtpylib.crossed_above(dataframe["rsi"], 50)) | (qtpylib.crossed_below(dataframe["rsi"], dataframe["rsi_minima"]))) &
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
 
@@ -307,8 +318,8 @@ class PandasPivots(IStrategy):
 
         dataframe.loc[
             (
-                # Signal: Candle low crosses below minima point.
-                (qtpylib.crossed_above(dataframe["rsi"], 30)) &
+                # Signal: RSI crosses below 50 OR RSI crosses above rsi of maxima point (invalidation).
+                ((qtpylib.crossed_below(dataframe["rsi"], 50)) | (qtpylib.crossed_above(dataframe["rsi"], dataframe["rsi_maxima"]))) &
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
             'exit_short'] = 1
