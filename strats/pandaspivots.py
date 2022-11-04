@@ -40,23 +40,22 @@ class PandasPivots(IStrategy):
     # Can this strategy go short?
     can_short: bool = True
 
-    # Minimal ROI designed for the strategy.
-    # This attribute will be overridden if the config file contains "minimal_roi".
+    # ROI table:
     minimal_roi = {
-        "60": 0.03,
-        "30": 0.04,
-        "0": 0.05
+        "0": 0.3,
+        "161": 0.2,
+        "665": 0.1,
+        "1861": 0.05
     }
 
-    # Optimal stoploss designed for the strategy.
-    # This attribute will be overridden if the config file contains "stoploss".
+    # Stoploss:
     stoploss = -0.01
 
-    # Trailing stoploss
-    trailing_stop = True
+    # Trailing stop:
+    trailing_stop = False
+    trailing_stop_positive = 0.01
+    trailing_stop_positive_offset = 0.03
     trailing_only_offset_is_reached = True
-    trailing_stop_positive = 0.005
-    trailing_stop_positive_offset = 0.02  # Disabled / not configured
 
     # Optimal timeframe for the strategy.
     # timeframe = '5m'
@@ -65,7 +64,7 @@ class PandasPivots(IStrategy):
     process_only_new_candles = True
 
     # These values can be overridden in the config.
-    use_exit_signal = False
+    use_exit_signal = True
     exit_profit_only = False
     ignore_roi_if_entry_signal = False
 
@@ -133,7 +132,7 @@ class PandasPivots(IStrategy):
         :return: a Dataframe with all mandatory indicators for the strategies
         """
 
-        # Maxima / Minima Points of High / Low
+        # Maxima / Minima Points of High / Low ########################################################
         
         pivot_range = int(20)
 
@@ -183,6 +182,11 @@ class PandasPivots(IStrategy):
 
         ##########################################################################################################################
         
+        # Volume rolling mean
+        
+        dataframe["volume_ma"] = dataframe["volume"].rolling(20).mean()
+        dataframe["volume_oscillator"] = (dataframe["volume"] / dataframe["volume_ma"])
+        
         # Momentum Indicators
         # ------------------------------------
 
@@ -198,13 +202,11 @@ class PandasPivots(IStrategy):
         dataframe["rsi_maxima"] = dataframe["rsi_maxima"].fillna(method = "ffill")  # Fill NaN with last value.
         dataframe["rsi_minima"] = dataframe["rsi_minima"].fillna(method = "ffill")  # Fill NaN with last value.
         
-        
-
-        # MACD
-        #macd = ta.MACD(dataframe)
-        #dataframe['macd'] = macd['macd']
-        #dataframe['macdsignal'] = macd['macdsignal']
-        #dataframe['macdhist'] = macd['macdhist']
+        # Bollinger Bands
+        bollinger = qtpylib.bollinger_bands(qtpylib.typical_price(dataframe), window=20, stds=2)
+        dataframe['bb_lowerband'] = bollinger['lower']
+        dataframe['bb_middleband'] = bollinger['mid']
+        dataframe['bb_upperband'] = bollinger['upper']
 
         # MFI
         dataframe['mfi'] = ta.MFI(dataframe)
@@ -217,38 +219,10 @@ class PandasPivots(IStrategy):
         
         dataframe["mfi_maxima"] = dataframe["mfi_maxima"].fillna(method = "ffill")  # Fill NaN with last value.
         dataframe["mfi_minima"] = dataframe["mfi_minima"].fillna(method = "ffill")  # Fill NaN with last value.
-
-        # Overlap Studies
-        # ------------------------------------
-
-        # Bollinger Bands
-        bollinger = qtpylib.bollinger_bands(qtpylib.typical_price(dataframe), window=20, stds=2)
-        dataframe['bb_lowerband'] = bollinger['lower']
-        dataframe['bb_middleband'] = bollinger['mid']
-        dataframe['bb_upperband'] = bollinger['upper']
-        dataframe["bb_percent"] = (
-            (dataframe["close"] - dataframe["bb_lowerband"]) /
-            (dataframe["bb_upperband"] - dataframe["bb_lowerband"])
-        )
-        dataframe["bb_width"] = (
-            (dataframe["bb_upperband"] - dataframe["bb_lowerband"]) / dataframe["bb_middleband"]
-        )
-
-        # Bollinger Bands - Weighted (EMA based instead of SMA)
-        # weighted_bollinger = qtpylib.weighted_bollinger_bands(
-        #     qtpylib.typical_price(dataframe), window=20, stds=2
-        # )
-        # dataframe["wbb_upperband"] = weighted_bollinger["upper"]
-        # dataframe["wbb_lowerband"] = weighted_bollinger["lower"]
-        # dataframe["wbb_middleband"] = weighted_bollinger["mid"]
-        # dataframe["wbb_percent"] = (
-        #     (dataframe["close"] - dataframe["wbb_lowerband"]) /
-        #     (dataframe["wbb_upperband"] - dataframe["wbb_lowerband"])
-        # )
-        # dataframe["wbb_width"] = (
-        #     (dataframe["wbb_upperband"] - dataframe["wbb_lowerband"]) /
-        #     dataframe["wbb_middleband"]
-        # )
+        
+        # Normalized Average True Range
+        
+        #dataframe["natr"] = ta.NATR(dataframe)
 
         # # EMA - Exponential Moving Average
         # dataframe['ema3'] = ta.EMA(dataframe, timeperiod=3)
@@ -282,8 +256,9 @@ class PandasPivots(IStrategy):
             (
                 # Signal:
                 (qtpylib.crossed_below(dataframe["low"], dataframe["minima"])) &  # Candle low swept minima.
-                (dataframe["rsi"] > (dataframe["rsi_minima"])) &  # RSI divergence
-                (dataframe["rsi"] < 40) &  # RSI is oversold.
+                (dataframe["low"] < dataframe['bb_lowerband']) &  # Low is lower than bb_lowerband.
+                (dataframe["mfi"] > (dataframe["mfi_minima"])) &  # MFI divergence
+                (dataframe["close"] > dataframe["minima"]) &  # But close is greater than minima. (wick down)
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
             'enter_long'] = 1
@@ -292,8 +267,9 @@ class PandasPivots(IStrategy):
             (
                 # Signal:
                 (qtpylib.crossed_above(dataframe["high"], dataframe["maxima"])) &  # Candle high swept maxima.
-                (dataframe["rsi"] < (dataframe["rsi_maxima"])) &  # RSI divergence
-                (dataframe["rsi"] > 60) &  # RSI is overbought.
+                (dataframe["high"] > dataframe['bb_upperband']) &  # High is higher than bb_upperband.
+                (dataframe["mfi"] < (dataframe["mfi_maxima"])) &  # MFI divergence
+                (dataframe["close"] < dataframe["maxima"]) &  # But close is less than maxima. (wick up))
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
             'enter_short'] = 1
@@ -310,7 +286,7 @@ class PandasPivots(IStrategy):
         dataframe.loc[
             (
                 # Signal: RSI crosses above 50 OR RSI crosses below rsi of minima point (invalidation).
-                ((qtpylib.crossed_above(dataframe["rsi"], 50)) | (qtpylib.crossed_below(dataframe["rsi"], dataframe["rsi_minima"]))) &
+                (qtpylib.crossed_above(dataframe["high"], dataframe["maxima"])) &  # Candle high swept maxima.
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
 
@@ -319,7 +295,7 @@ class PandasPivots(IStrategy):
         dataframe.loc[
             (
                 # Signal: RSI crosses below 50 OR RSI crosses above rsi of maxima point (invalidation).
-                ((qtpylib.crossed_below(dataframe["rsi"], 50)) | (qtpylib.crossed_above(dataframe["rsi"], dataframe["rsi_maxima"]))) &
+                (qtpylib.crossed_below(dataframe["low"], dataframe["minima"])) &  # Candle low swept minima.
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
             'exit_short'] = 1
