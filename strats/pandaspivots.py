@@ -42,20 +42,20 @@ class PandasPivots(IStrategy):
 
     # ROI table:
     minimal_roi = {
-        "0": 0.08,
-        "30": 0.04,
-        "60": 0.02,
-        "120": 0.01
+        "0": 0.214,
+        "18": 0.069,
+        "75": 0.01,
+        "125": 0
     }
 
     # Stoploss:
-    stoploss = -0.01
+    stoploss = -0.331
 
     # Trailing stop:
     trailing_stop = True
-    trailing_stop_positive = 0.005
-    trailing_stop_positive_offset = 0.01
-    trailing_only_offset_is_reached = True
+    trailing_stop_positive = 0.284
+    trailing_stop_positive_offset = 0.325
+    trailing_only_offset_is_reached = False
     
 
     # Optimal timeframe for the strategy.
