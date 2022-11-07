@@ -49,13 +49,13 @@ class PandasPivots(IStrategy):
     }
 
     # Stoploss:
-    stoploss = -0.331
+    stoploss = -1
 
     # Trailing stop:
     trailing_stop = True
-    trailing_stop_positive = 0.284
-    trailing_stop_positive_offset = 0.325
-    trailing_only_offset_is_reached = False
+    trailing_stop_positive = 0.01
+    trailing_stop_positive_offset = 0.05
+    trailing_only_offset_is_reached = True
     
 
     # Optimal timeframe for the strategy.
@@ -76,7 +76,7 @@ class PandasPivots(IStrategy):
     #exit_short_rsi = IntParameter(low=1, high=50, default=30, space='buy', optimize=True, load=True)
 
     # Number of candles the strategy requires before producing valid signals
-    startup_candle_count: int = 20
+    startup_candle_count: int = 40
 
     # Optional order type mapping.
     order_types = {
@@ -135,12 +135,12 @@ class PandasPivots(IStrategy):
 
         ################################## Maxima / Minima Points of High / Low #####################################
         
-        pivot_range = int(10)
+        pivot_range = int(20)
 
         # Minima code
         
-        conditions1_minima = np.array([(dataframe["close"].shift(periods = pivot_range) < dataframe["close"].shift(periods = pivot_range + lb)) for lb in range(1, pivot_range + 1)])
-        conditions2_minima = np.array([(dataframe["close"].shift(periods = pivot_range) < dataframe["close"].shift(periods = pivot_range - lb)) for lb in range(1, pivot_range + 1)])
+        conditions1_minima = np.array([(dataframe["low"].shift(periods = pivot_range) < dataframe["low"].shift(periods = pivot_range + lb)) for lb in range(1, pivot_range + 1)])
+        conditions2_minima = np.array([(dataframe["low"].shift(periods = pivot_range) < dataframe["low"].shift(periods = pivot_range - lb)) for lb in range(1, pivot_range + 1)])
         conditions_minima = conditions1_minima & conditions2_minima
         # 1st element is if condition is true compared to first candle before,
         # 2nd element is if condition is true compared to second candle before and so on ...
@@ -151,12 +151,12 @@ class PandasPivots(IStrategy):
         # Test whether all array elements along a given axis evaluate to True.
         dataframe["check_minima"] = check_minima
         dataframe["check_minima"][dataframe["check_minima"] == False] = None
-        dataframe["minima"] = dataframe["close"].shift(periods = pivot_range)[check_minima == True]
+        dataframe["minima"] = dataframe["low"].shift(periods = pivot_range)[check_minima == True]
         
         # Maxima code
         
-        conditions1_maxima = np.array([(dataframe["close"].shift(periods = pivot_range) > dataframe["close"].shift(periods = pivot_range + lb)) for lb in range(1, pivot_range + 1)])
-        conditions2_maxima = np.array([(dataframe["close"].shift(periods = pivot_range) > dataframe["close"].shift(periods = pivot_range - lb)) for lb in range(1, pivot_range + 1)])
+        conditions1_maxima = np.array([(dataframe["high"].shift(periods = pivot_range) > dataframe["high"].shift(periods = pivot_range + lb)) for lb in range(1, pivot_range + 1)])
+        conditions2_maxima = np.array([(dataframe["high"].shift(periods = pivot_range) > dataframe["high"].shift(periods = pivot_range - lb)) for lb in range(1, pivot_range + 1)])
         conditions_maxima = conditions1_maxima & conditions2_maxima
         # 1st element is if condition is true compared to first candle before,
         # 2nd element is if condition is true compared to second candle before and so on ...
@@ -170,10 +170,10 @@ class PandasPivots(IStrategy):
 
         dataframe["check_maxima"] = check_maxima
         dataframe["check_maxima"][dataframe["check_maxima"] == False] = None
-        dataframe["maxima"] = dataframe["close"].shift(periods = pivot_range)[check_maxima == True]
+        dataframe["maxima"] = dataframe["high"].shift(periods = pivot_range)[check_maxima == True]
         
-        dataframe["maxima"][0] = dataframe["close"][0] * 1.5  # an arbitrarily large value assigned to first row (to make .fillna() function work.)
-        dataframe["minima"][0] = dataframe["close"][0] * 0.5  # an arbitrarily small value assigned to first row (to make .fillna() function work.)
+        dataframe["maxima"][0] = dataframe["high"][0] * 1.5  # an arbitrarily large value assigned to first row (to make .fillna() function work.)
+        dataframe["minima"][0] = dataframe["low"][0] * 0.5  # an arbitrarily small value assigned to first row (to make .fillna() function work.)
 
         dataframe["maxima"] = dataframe["maxima"].fillna(method = "ffill")  # Fill NaN with last value.
         dataframe["minima"] = dataframe["minima"].fillna(method = "ffill")  # Fill NaN with last value.
@@ -257,9 +257,9 @@ class PandasPivots(IStrategy):
         dataframe.loc[
             (
                 # Signal:
-                (dataframe["low"] < min(dataframe["minima"])) &  # Candle low is lower than minima .
+                (dataframe["low"] < dataframe["minima"]) &  # Candle low is lower than minima .
                 (dataframe["low"] <= dataframe['rolling_min']) &  # Candle low is lower than rolling_min.
-                (dataframe["rsi"] > (dataframe["rsi_minima"])) &  # RSI divergence
+                (dataframe["rsi"] > (dataframe["rsi_minima"] + 5)) &  # RSI divergence
                 (dataframe["rsi_minima"] < 30) &  # RSI of minima point is lower than 30.
                 (dataframe["close"] > dataframe["minima"]) &  # But close is greater than minima. (wick down)
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
@@ -271,7 +271,7 @@ class PandasPivots(IStrategy):
                 # Signal:
                 (dataframe["high"] > dataframe["maxima"]) &  # Candle high is higher than maxima.
                 (dataframe["high"] >= dataframe['rolling_max']) &  # High is higher than rolling_max.
-                (dataframe["rsi"] < (dataframe["rsi_maxima"])) &  # RSI divergence
+                (dataframe["rsi"] < (dataframe["rsi_maxima"] - 5)) &  # RSI divergence
                 (dataframe["rsi_maxima"] > 70) &  # RSI of maxima point is greater than 70.
                 (dataframe["close"] < dataframe["maxima"]) &  # But close is less than maxima. (wick up))
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
