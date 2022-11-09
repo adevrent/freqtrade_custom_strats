@@ -42,19 +42,20 @@ class KnifeCatcher(IStrategy):
 
     # ROI table:
     minimal_roi = {
-        "0": 0.01,
-        "30": 0.0075,
-        "60": 0.0050
+        "0": 0.107,
+        "7": 0.031,
+        "19": 0.015,
+        "42": 0
     }
 
     # Stoploss:
-    stoploss = -0.005
+    stoploss = -0.035
 
     # Trailing stop:
     trailing_stop = True
-    trailing_stop_positive = 0.0025
-    trailing_stop_positive_offset = 0.005
-    trailing_only_offset_is_reached = True
+    trailing_stop_positive = 0.033
+    trailing_stop_positive_offset = 0.044
+    trailing_only_offset_is_reached = False
     
 
     # Optimal timeframe for the strategy.
@@ -189,13 +190,18 @@ class KnifeCatcher(IStrategy):
         dataframe["move"] = dataframe["open"] - dataframe["close"]
         dataframe["abs_move"] = dataframe["move"].abs()
         dataframe["abs_move_shifted"] = dataframe["abs_move"].shift(periods = 1)
+        
+        # Shifted Volume
+        
+        dataframe["volume_shifted"] = dataframe["volume"].shift(periods = 1)
 
 
         ##########################################################################################################################
         
         # Volume rolling mean
         
-        dataframe["volume_ma"] = dataframe["volume"].rolling(5).mean()
+        dataframe["volume_ma_slow"] = dataframe["volume"].rolling(60).mean()
+        dataframe["volume_ma_fast"] = dataframe["volume"].rolling(5).mean()
         #dataframe["volume_oscillator"] = (dataframe["volume"] / dataframe["volume_ma"])
 
         # RSI
@@ -210,11 +216,6 @@ class KnifeCatcher(IStrategy):
         dataframe["rsi_maxima"] = dataframe["rsi_maxima"].fillna(method = "ffill")  # Fill NaN with last value.
         dataframe["rsi_minima"] = dataframe["rsi_minima"].fillna(method = "ffill")  # Fill NaN with last value.
         
-        # Bollinger Bands
-        bollinger = qtpylib.bollinger_bands(qtpylib.typical_price(dataframe), window=10, stds=2)
-        dataframe['bb_lowerband'] = bollinger['lower']
-        dataframe['bb_middleband'] = bollinger['mid']
-        dataframe['bb_upperband'] = bollinger['upper']
 
         # MFI
         dataframe['mfi'] = ta.MFI(dataframe)
@@ -237,7 +238,7 @@ class KnifeCatcher(IStrategy):
         # dataframe['ema5'] = ta.EMA(dataframe, timeperiod=5)
 
         # # SMA - Simple Moving Average
-        # dataframe['sma3'] = ta.SMA(dataframe, timeperiod=3)
+        dataframe['sma_fast'] = ta.SMA(dataframe, timeperiod=10)
         # dataframe['sma5'] = ta.SMA(dataframe, timeperiod=5)
 
         # Retrieve best bid and best ask from the orderbook
@@ -263,10 +264,13 @@ class KnifeCatcher(IStrategy):
         dataframe.loc[
             (
                 # Signal:
-                (dataframe["low"] < dataframe["bb_lowerband"]) &  # Low is lower than BB lowerband.
+                (dataframe["low"].shift(periods = 1) < (0.99 * dataframe["sma_fast"].shift(periods = 1))) &  # Previous low is lower than MA.
+                (dataframe["close"].shift(periods = 1) < dataframe["open"].shift(periods = 1)) &  # Previous candle is red.
                 (dataframe["close"] > dataframe["open"]) &  # Green candle.
-                (dataframe["abs_move"] > dataframe["abs_move_shifted"]) & # Move is greater than half of previous candle.
-                (dataframe["volume"] < dataframe["volume_ma"]) & # Volume is lower than the volume moving average.
+                (dataframe["abs_move"] > (0.5 * dataframe["abs_move_shifted"])) &  # Move is greater than half of previous candle.
+                (dataframe["volume"] < dataframe["volume_ma_fast"]) & # Volume is lower than the fast volume moving average.
+                (dataframe["volume"] < (0.5 * dataframe["volume_shifted"])) & # Volume is lower than half of previous volume.
+                (dataframe["volume_shifted"] > (2 * dataframe["volume_ma_slow"])) & # Previous candle volume is large.
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
             'enter_long'] = 1
@@ -274,10 +278,13 @@ class KnifeCatcher(IStrategy):
         dataframe.loc[
             (
                 # Signal:
-                (dataframe["high"] > dataframe["bb_upperband"]) &  # High is greater than BB upper band.
+                (dataframe["high"].shift(periods = 1) > (1.01 * dataframe["sma_fast"].shift(periods = 1))) &  # Previous high is greater than MA.
+                (dataframe["close"].shift(periods = 1) > dataframe["open"].shift(periods = 1)) &  # Previous candle is green.
                 (dataframe["close"] < dataframe["open"]) &  # Red candle.
-                (dataframe["abs_move"] > dataframe["abs_move_shifted"]) &  # Move is greater than half of previous candle.
-                (dataframe["volume"] < dataframe["volume_ma"]) & # Volume is lower than the volume moving average.
+                (dataframe["abs_move"] > (0.5 * dataframe["abs_move_shifted"])) &  # Move is greater than half of previous candle.
+                (dataframe["volume"] < dataframe["volume_ma_fast"]) & # Volume is lower than the fast volume moving average.
+                (dataframe["volume"] < (0.5 * dataframe["volume_shifted"])) & # Volume is lower than half of previous volume.
+                (dataframe["volume_shifted"] > (2 * dataframe["volume_ma_slow"])) & # Previous candle volume is large.
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
             'enter_short'] = 1
