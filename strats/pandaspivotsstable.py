@@ -16,7 +16,7 @@ import freqtrade.vendor.qtpylib.indicators as qtpylib
 
 
 # This class is a sample. Feel free to customize it.
-class PandasPivots(IStrategy):
+class PandasPivotsStable(IStrategy):
     """
     This is a sample strategy to inspire you.
     More information in https://www.freqtrade.io/en/latest/strategy-customization/
