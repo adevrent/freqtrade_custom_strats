@@ -42,11 +42,10 @@ class PandasPivots(IStrategy):
 
     # ROI table:
     minimal_roi = {
-        "0": 0.02,
-        "10": 0.01,
-        "20": 0.05,
-        "30": 0.0025,
-        "60": 0
+        "15": 0.02,
+        "30": 0.01,
+        "60": 0.00
+        
     }
 
     # Stoploss:
@@ -55,7 +54,7 @@ class PandasPivots(IStrategy):
     # Trailing stop:
     trailing_stop = True
     trailing_stop_positive = 0.0025
-    trailing_stop_positive_offset = 0.005
+    trailing_stop_positive_offset = 0.01
     trailing_only_offset_is_reached = True
     
 
@@ -136,7 +135,7 @@ class PandasPivots(IStrategy):
 
         ################################## Maxima / Minima Points of High / Low #####################################
         
-        pivot_range = int(5)
+        pivot_range = int(10)
 
         # Minima code
         
@@ -182,8 +181,8 @@ class PandasPivots(IStrategy):
         
         # Rolling max and min to support the pivot points:
         
-        dataframe["rolling_max"] = dataframe["close"].rolling(pivot_range * 2).max().shift(periods = 1)
-        dataframe["rolling_min"] = dataframe["close"].rolling(pivot_range * 2).min().shift(periods = 1)
+        dataframe["rolling_max"] = dataframe["high"].rolling(pivot_range * 2).max().shift(periods = 1)
+        dataframe["rolling_min"] = dataframe["low"].rolling(pivot_range * 2).min().shift(periods = 1)
         
         # Averages of Extrema
         
@@ -237,7 +236,7 @@ class PandasPivots(IStrategy):
 
         # # SMA - Simple Moving Average
         dataframe['sma_fast'] = ta.SMA(dataframe, timeperiod=20)
-        dataframe['sma_slow'] = ta.SMA(dataframe, timeperiod=120)
+        dataframe['sma_slow'] = ta.SMA(dataframe, timeperiod=60)
 
         # Retrieve best bid and best ask from the orderbook
         # ------------------------------------
@@ -297,8 +296,8 @@ class PandasPivots(IStrategy):
         dataframe.loc[
             (
                 # Signal: RSI crosses below 50 OR RSI crosses below rsi of mfinima point (invalidation).
-                ((qtpylib.crossed_above(dataframe["high"], dataframe["maxima"]))) & # Candle high swept maxima.
-                (dataframe["high"] > dataframe["rolling_max"]) & 
+                (dataframe["sma_fast"] < dataframe["sma_slow"]) & # Trend change. Exit asap with Bollinger Bands.
+                (dataframe["high"] > dataframe["bb_upperband"]) &
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
 
@@ -307,8 +306,8 @@ class PandasPivots(IStrategy):
         dataframe.loc[
             (
                 # Signal: RSI crosses below 50 OR RSI crosses above rsi of maxima point (invalidation).
-                ((qtpylib.crossed_below(dataframe["low"], dataframe["minima"]))) & # Candle low swept minima.
-                (dataframe["low"] < dataframe["rolling_min"]) & 
+                (dataframe["sma_fast"] > dataframe["sma_slow"]) & # Trend change. Exit asap with Bollinger Bands.
+                (dataframe["low"] > dataframe["bb_lowerband"]) &
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
             'exit_short'] = 1
