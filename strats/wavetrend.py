@@ -43,7 +43,7 @@ class WaveTrend(IStrategy):
     # Minimal ROI designed for the strategy.
     # This attribute will be overridden if the config file contains "minimal_roi".
     minimal_roi = {
-        "0": 0.1
+        "0": 0.2
     }
 
     # Optimal stoploss designed for the strategy.
@@ -51,10 +51,10 @@ class WaveTrend(IStrategy):
     stoploss = -0.8
 
     # Trailing stoploss
-    trailing_stop = False
+    trailing_stop = True
     trailing_only_offset_is_reached = True
-    trailing_stop_positive = 0.005
-    trailing_stop_positive_offset = 0.02  # Disabled / not configured
+    trailing_stop_positive = 0.0025
+    trailing_stop_positive_offset = 0.005  # Disabled / not configured
 
     # Optimal timeframe for the strategy.
     # timeframe = '5m'
@@ -63,7 +63,7 @@ class WaveTrend(IStrategy):
     process_only_new_candles = True
 
     # These values can be overridden in the config.
-    use_exit_signal = False
+    use_exit_signal = True
     exit_profit_only = False
     ignore_roi_if_entry_signal = False
 
@@ -211,7 +211,8 @@ class WaveTrend(IStrategy):
         dataframe.loc[
             (
                 # Signal: Candle high crosses above maxima point.
-                (qtpylib.crossed_below(dataframe["rsi"], 70)) &
+                (qtpylib.crossed_below(dataframe["wt1"], dataframe["wt2"])) &  # Red dot.
+                (dataframe["wt2"] > 60) &  # while wt2 is overbought.
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
 
@@ -220,7 +221,8 @@ class WaveTrend(IStrategy):
         dataframe.loc[
             (
                 # Signal: Candle low crosses below minima point.
-                (qtpylib.crossed_above(dataframe["rsi"], 30)) &
+                (qtpylib.crossed_above(dataframe["wt1"], dataframe["wt2"])) &  # Green dot.
+                (dataframe["wt2"] < -60) &  # while wt2 is overbought.
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
             'exit_short'] = 1
