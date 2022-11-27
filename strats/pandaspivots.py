@@ -132,7 +132,9 @@ class PandasPivots(IStrategy):
         :param metadata: Additional information, like the currently traded pair
         :return: a Dataframe with all mandatory indicators for the strategies
         """
-
+        
+        pd.options.mode.chained_assignment = None  # default='warn'
+        
         ################################## Maxima / Minima Points of High / Low #####################################
         
         pivot_range = int(10)
