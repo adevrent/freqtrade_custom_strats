@@ -59,7 +59,7 @@ class PandasPivots(IStrategy):
     
 
     # Optimal timeframe for the strategy.
-    # timeframe = '5m'
+    timeframe = '1m'
 
     # Run "populate_indicators()" only for new candle.
     process_only_new_candles = True
@@ -132,7 +132,9 @@ class PandasPivots(IStrategy):
         :param metadata: Additional information, like the currently traded pair
         :return: a Dataframe with all mandatory indicators for the strategies
         """
-
+        
+        pd.options.mode.chained_assignment = None  # default='warn'
+        
         ################################## Maxima / Minima Points of High / Low #####################################
         
         pivot_range = int(10)
@@ -183,18 +185,10 @@ class PandasPivots(IStrategy):
         
         dataframe["rolling_max"] = dataframe["high"].rolling(pivot_range * 2).max().shift(periods = 1)
         dataframe["rolling_min"] = dataframe["low"].rolling(pivot_range * 2).min().shift(periods = 1)
-        
-        # Averages of Extrema
-        
-        dataframe["extrema_avg"] = ((dataframe["maxima"] + dataframe["minima"]) / 2)
 
 
         ##########################################################################################################################
         
-        # Volume rolling mean
-        
-        dataframe["volume_ma"] = dataframe["volume"].rolling(20).mean()
-        dataframe["volume_oscillator"] = (dataframe["volume"] / dataframe["volume_ma"])
 
         # RSI
         dataframe['rsi'] = ta.RSI(dataframe, timeperiod = (pivot_range * 3))
@@ -207,32 +201,6 @@ class PandasPivots(IStrategy):
         
         dataframe["rsi_maxima"] = dataframe["rsi_maxima"].fillna(method = "ffill")  # Fill NaN with last value.
         dataframe["rsi_minima"] = dataframe["rsi_minima"].fillna(method = "ffill")  # Fill NaN with last value.
-        
-        # Bollinger Bands
-        bollinger = qtpylib.bollinger_bands(qtpylib.typical_price(dataframe), window=20, stds=2)
-        dataframe['bb_lowerband'] = bollinger['lower']
-        dataframe['bb_middleband'] = bollinger['mid']
-        dataframe['bb_upperband'] = bollinger['upper']
-
-        # MFI
-        dataframe['mfi'] = ta.MFI(dataframe, timeperiod = pivot_range)
-        
-        dataframe["mfi_maxima"] = dataframe["mfi"].shift(periods = pivot_range)[check_maxima == True]  # MFI of last maxima point.
-        dataframe["mfi_minima"] = dataframe["mfi"].shift(periods = pivot_range)[check_minima == True]  # MFI of last minima point.
-        
-        dataframe["mfi_maxima"][0] = 80  # an arbitrarily large value assigned to first row (to make .fillna() function work.)
-        dataframe["mfi_minima"][0] = 20  # an arbitrarily small value assigned to first row (to make .fillna() function work.)
-        
-        dataframe["mfi_maxima"] = dataframe["mfi_maxima"].fillna(method = "ffill")  # Fill NaN with last value.
-        dataframe["mfi_minima"] = dataframe["mfi_minima"].fillna(method = "ffill")  # Fill NaN with last value.
-        
-        # Normalized Average True Range
-        
-        #dataframe["natr"] = ta.NATR(dataframe)
-
-        # # EMA - Exponential Moving Average
-        # dataframe['ema3'] = ta.EMA(dataframe, timeperiod=3)
-        # dataframe['ema5'] = ta.EMA(dataframe, timeperiod=5)
 
         # # SMA - Simple Moving Average
         dataframe['sma_fast'] = ta.SMA(dataframe, timeperiod=20)
@@ -269,7 +237,7 @@ class PandasPivots(IStrategy):
                 (dataframe["close"] > dataframe["minima"]) &  # But close is greater than minima. (wick down)
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
-            'enter_long'] = 1
+            ['enter_long', 'enter_tag']] = (1, 'rsi_bull_div')
 
         dataframe.loc[
             (
@@ -282,7 +250,7 @@ class PandasPivots(IStrategy):
                 (dataframe["close"] < dataframe["maxima"]) &  # But close is less than maxima. (wick up))
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
-            'enter_short'] = 1
+            ['enter_short', 'enter_tag']] = (1, 'rsi_bear_div')
 
         return dataframe
 
@@ -295,9 +263,8 @@ class PandasPivots(IStrategy):
         """
         dataframe.loc[
             (
-                # Signal: RSI crosses below 50 OR RSI crosses below rsi of mfinima point (invalidation).
-                (dataframe["sma_fast"] < dataframe["sma_slow"]) & # Trend change. Exit asap with Bollinger Bands.
-                (dataframe["high"] > dataframe["bb_upperband"]) &
+                # Signal: RSI crosses below 50 OR RSI crosses below rsi of minima point (invalidation).
+                (dataframe["sma_fast"] < dataframe["sma_slow"]) & # Trend change. Exit.
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
 
@@ -306,8 +273,7 @@ class PandasPivots(IStrategy):
         dataframe.loc[
             (
                 # Signal: RSI crosses below 50 OR RSI crosses above rsi of maxima point (invalidation).
-                (dataframe["sma_fast"] > dataframe["sma_slow"]) & # Trend change. Exit asap with Bollinger Bands.
-                (dataframe["low"] > dataframe["bb_lowerband"]) &
+                (dataframe["sma_fast"] > dataframe["sma_slow"]) & # Trend change. Exit.
                 (dataframe['volume'] > 0)  # Make sure Volume is not 0
             ),
             'exit_short'] = 1
